@@ -1,0 +1,1192 @@
+---
+title: "STA380 Exercise"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_knit$set(root.dir = "C:/Users/raisi/Downloads/Summer 2019/Predictive Modelling J Scott/STA380-master/data")
+```
+
+
+# ** Question 1: Visual story telling part 1: green buildings:**
+```{r, include=FALSE}
+library(dplyr)
+library(ggplot2)
+library(xtable)
+library(knitr)
+library(kableExtra)
+```
+
+First step is to read in the data and summarize it. We also check for missing values
+```{r}
+datagb = read.csv("greenbuildings.csv")
+attach(datagb)
+#Take a summary of the data and check for missing values
+kable(sapply(datagb, function(x) sum(is.na(x))))
+```
+
+Thus we can see that only emp_gr column has missing values.
+
+Next we check to see if there are outliers in the rent for green and non-green buildings.
+```{r}
+median_1 <- median(datagb$Rent[datagb$green_rating == 1])
+median_0 <- median(datagb$Rent[datagb$green_rating == 0])
+ggplot(data = datagb, aes(x = as.factor(green_rating), y = Rent)) +
+  geom_boxplot(aes(x=green_rating, y = Rent, group= green_rating, fill = as.factor(green_rating))) + 
+  scale_fill_manual(c("Green Building"), labels = c("No", "Yes"), values = c('darkblue', 'darkgreen')) +
+  scale_x_discrete("Green Rating") +
+  geom_text(data = data.frame(x = 0, y = median_1),
+            aes(x, y), label = median_1, hjust = -2, vjust = -1, colour = "darkgreen") +
+  geom_text(data = data.frame(x = 0, y = median_0),
+            aes(x, y), label = median_0, hjust = -1, vjust = 1.5, colour = "darkblue") +
+  ggtitle("Rent vs Green Rating")
+```
+
+From the above plot we can see that the rent for non-green building might be skewed due to many outliers above 50 and so we look at the median rents. The median rent for green buildings is higher than non-green buildings by (27.6-25) = **2.6$/sqft**
+
+Now let us check how the leasing rate affects the rent for green and non green buildings:
+```{r}
+ggplot(data = datagb)+
+  geom_point(aes( leasing_rate, Rent,color = factor(green_rating)), alpha = 0.6)+
+  scale_color_brewer(palette="Dark2")
+```
+
+There seems to be a high concentration between 0-10%. Let's plot the leasing rate separately for green and non green:
+```{r}
+par(mfrow=c(2,2))
+ggplot(data = subset(datagb, datagb$green_rating ==1))+
+  geom_point(aes( leasing_rate, Rent,color = factor(green_rating)), color="darkred")+
+  ggtitle("Leasing rate vs Rent of Green buildings")
+ggplot(data = subset(datagb, datagb$green_rating ==0))+
+  geom_point(aes( leasing_rate, Rent,color = factor(green_rating)), color="darkblue")+
+  ggtitle("Leasing rate vs Rent of Non-Green buildings")
+```
+
+Thus we see, for non-green buildings, there are **leasing rates less than 10%**. Let us ignore these buildings as we have to compare with green buildings:
+
+```{r}
+datagb <-subset(datagb, datagb$leasing_rate >10)
+```
+
+Since most green- buildings are young, rent should be higher than non-green buildings.
+First, let us plot the number of green and non-green buildings based on age:
+```{r}
+datagb = datagb %>%
+  mutate(agecat = cut(age, c(0,10,20,50,100)))
+#summary(datagb)
+datagb = na.omit(datagb)
+d3 = datagb %>%
+  group_by(green_rating, agecat) %>%tally
+ggplot(data= d3, aes(agecat,n, fill = factor(green_rating)))+
+  geom_bar(stat='identity',width=0.5, position=position_dodge())+
+  ggtitle("Number of buildings based on age")
+```
+
+In general there are more non green buildings than green buidings and they are also older than the green buildings
+
+Now, let us plot the mean age for green vs non green:
+```{r}
+d4 = datagb %>%
+  group_by(green_rating, agecat) %>%
+  summarise(mean_rent = mean(Rent))
+ggplot(data= d4, aes(agecat,mean_rent, fill = factor(green_rating)))+
+  geom_bar(stat='identity',width=0.5, position=position_dodge())+
+  ggtitle("Mean rent of buildings by age")
+```
+
+Only in the first 10 years the avg rent of green buildings is higher than non-green. Additionally, as the age is increasing, rent for green is increasing, but decreasing for non- green buildings.
+
+Now, let us also consider the leasing rate.
+We will plot the occupancy rate in green and non-green buildings according to age:
+```{r}
+d5 = datagb %>%
+  group_by(green_rating, agecat) %>%
+  summarise(mean_leasing = mean(leasing_rate))
+ggplot(data= d5, aes(agecat,mean_leasing, fill = factor(green_rating)))+
+  geom_bar(stat='identity',width=0.5, position=position_dodge())+
+  ggtitle("Mean Leasing rate of buildings by age")
+```
+
+In general the mean leasing rate is more for green buildings than non-green and is above 80%. Let us find the mean leasing rate of green and non-green buildings:
+```{r}
+mean_leasing1 <- mean(datagb$leasing_rate[datagb$green_rating == 1])
+mean_leasing0 <- mean(datagb$leasing_rate[datagb$green_rating == 0])
+```
+
+The average leasing rate for green buildings is **`r mean_leasing1`** and that of non-green building is **`r mean_leasing0`**.
+
+This implies that even though the initial cost are higher for a green building, in years to come the rent as well as the leasing rate will be higher for green buildings, thus allowing us the get a ROI.
+
+Now let us look at what role class plays here. Let us plot the number of buildings vs classes:
+```{r}
+d6 = datagb %>%
+  group_by(green_rating, class_b, class_a) %>%tally
+d6$class_abc = ifelse(d6$class_a ==0 & d6$class_b ==0, 'c',
+                      ifelse(d6$class_a ==1,'a','b'))
+ggplot(data = d6)+
+  geom_bar(aes(class_abc,n,fill = d6$class_abc), stat='identity',width=0.5, position=position_dodge())+
+  facet_grid(d6$green_rating)+scale_fill_brewer(palette="Set1")
+```
+
+We see that most of the green buildings belong to class A and there are more class B non-green buildings than Class A
+
+Let us plot class vs Rent. We see that the rent of class A buildings have a higher rent
+```{r}
+datagb$class_abc = ifelse(datagb$class_a ==0 & datagb$class_b ==0, 'c',
+                      ifelse(datagb$class_a ==1,'a','b'))
+d7 = datagb %>%
+  group_by(green_rating, class_abc) %>%
+  summarise(mean_rent = mean(Rent))
+ggplot(data = d7)+
+  geom_bar(aes(d7$class_abc, d7$mean_rent, fill = class_abc),
+           stat='identity',width=0.5, position=position_dodge())+
+  facet_grid(d7$green_rating)+scale_fill_brewer(palette="Dark2")
+```
+
+We can see that if the building is in class A, the rent will be higher irrespective of whether it is a green building or not.
+
+Let us see the numbers now:
+
+The rent obtained from a green building, considering average leasing rate is: 
+
+```{r}
+rent_green = 250000*(median_1)*mean_leasing1/100
+rent_nongreen = 250000*(median_0)*mean_leasing0/100
+excess_rent = rent_green - rent_nongreen
+additional_charges = 5000000
+years_to_recover = additional_charges/excess_rent
+```
+
+We find the excess rent that we would get from a green building to be **$`r excess_rent`**. 
+
+Thus, considering the $5M additional charge that goes into a green building, we would take **`r years_to_recover`** years to recover the extra cost.
+
+Let us keep in mind that the rent as well as leasing rate increases for green buildings as it gets older and hence we agree with the excel expert that it will be a good financial decision to build a green building.
+
+###########################################################################################################################
+
+# ** Question 2: Visual story telling part 2: flights at ABIA:**
+
+## PROBLEM DESCRIPTION: 
+#### We are given the data for flights at Austin Airport, do EDA and produce some interesting findings
+#### Installing the necessary libraries
+```{r, echo = FALSE, include=FALSE}
+library(ggplot2)
+#library(ggmap)
+library(dplyr)
+library(tidyverse)
+```
+
+## Reading the files Abia and airport codes
+```{r, echo = FALSE}
+abia = read.csv("ABIA.csv", stringsAsFactors = F)
+airport_codes = read.csv("airport_codes.csv", stringsAsFactors = F)
+```
+
+
+#### Data Cleaning and Manupulation ####
+## Adding another column "day_phase" and "day_phase_arr" which groups the deperature time and arrival time into following groups: 
+#### If time is between 0:00 to 6:00 then its early morning
+#### If time is between 6:00 to 12:00 then its is morning
+#### If the time is between 12:00 to 15:00 then it is afternoon
+#### If the time is between 15:00 to 20:00 then it is evening 
+#### from 20:00 to 0:00 it is night
+```{r, echo = FALSE}
+#### imputing NA values as 0 in abia data 
+abia_clean <- abia
+  
+for(i in 1:nrow(abia_clean)){
+  
+  if(is.na(abia_clean[i,'CarrierDelay']) == T) {
+  abia_clean[i,'CarrierDelay'] = 0 } 
+ if(is.na(abia_clean[i,'NASDelay']) == T) {
+  abia_clean[i,'NASDelay'] = 0 } 
+if(is.na(abia_clean[i,'LateAircraftDelay']) == T) {
+  abia_clean[i,'LateAircraftDelay'] = 0 }
+  if(is.na(abia_clean[i,'SecurityDelay']) == T) {
+  abia_clean[i,'SecurityDelay'] = 0 } 
+  if(is.na(abia_clean[i,'WeatherDelay']) == T) {
+  abia_clean[i,'WeatherDelay'] = 0 } 
+  if(is.na(abia_clean[i,'ArrDelay']) == T) {
+  abia_clean[i,'ArrDelay'] = 0 } 
+  if(is.na(abia_clean[i,'DepDelay']) == T) {
+  abia_clean[i,'DepDelay'] = 0 } 
+}
+#### Filtering out the rows have arrival time or departure time as NA. These generally correspond to cancelled flights
+abia_clean_new <- abia_clean[which(is.na(abia_clean$ArrTime) == F) ,]
+abia_clean_new <- abia_clean[which(is.na(abia_clean$DepTime) == F) ,]
+#### Creating a new column called phase of the day 
+abia_clean_new$dayphase <- ifelse(abia_clean_new$DepTime <=600,"Early Morning",ifelse(abia_clean_new$DepTime<=1200,"Morning", ifelse(abia_clean_new$DepTime<=1500,"Afternoon", ifelse(abia_clean_new$DepTime<=2000,"Evening","Night") ))) 
+abia_clean_new$dayphasearr <- ifelse(abia_clean_new$ArrTime <=600,"Early Morning",ifelse(abia_clean_new$ArrTime<=1200,"Morning", ifelse(abia_clean_new$ArrTime<=1500,"Afternoon", ifelse(abia_clean_new$ArrTime<=2000,"Evening","Night") ))) 
+#### Seperating out the cordincates for ggmap in airport_clean dataset 
+airport_codes_clean <- airport_codes
+airport_codes_clean$lat <- 0
+airport_codes_clean$lng <- 0
+for(i in 1:nrow(airport_codes_clean)){
+  airport_codes_clean$lat[i] <- str_split(airport_codes_clean$coordinates[i],",")[[1]][1]
+  airport_codes_clean$lng[i] <- str_split(airport_codes_clean$coordinates[i],",")[[1]][2]
+  
+}
+```
+
+#### Plotting a map with delays
+```{r echo = FALSE}
+#test <- get_map("Texas")
+min_lat <- min(as.numeric(airport_codes_clean$lat))
+max_lat <- max(as.numeric(airport_codes_clean$lat))
+min_lng <- min(as.numeric(airport_codes_clean$lng))
+max_lng <- max(as.numeric(airport_codes_clean$lng))
+#(map <- get_map(c(left = min_lat, bottom = min_lng, right = max_lat, top = max_lng)))
+#ggmap(map)
+```
+
+Tried using ggmap but in order to use it, the console is telling me to register with a google API and while requesting it from https://cloud.google.com/maps-platform/ , it is asking for billing information. Tried mapping with locations but it is unable to fetch the files from source 
+Moving ahead and doing EDA on ABIA data only 
+
+The unique carriers are:
+```{r, echo=FALSE}
+print(unique(abia_clean_new$UniqueCarrier))
+```
+
+The unique origins are:
+```{r echo=FALSE}
+cat("\n")
+print(unique(abia_clean_new$Origin))
+```
+
+## Plotting total number of flights per carrier and operating per airport
+```{r echo = FALSE}
+par(mfrow=c(2,2))
+abia_clean_new_grouped_carrier <- abia_clean_new%>%
+  group_by(UniqueCarrier)%>%
+  summarize(flightnumber = length(unique(FlightNum)))%>% arrange(desc(UniqueCarrier))
+require(forcats)
+ggplot(abia_clean_new_grouped_carrier, aes(x= reorder(UniqueCarrier, -flightnumber), y=(flightnumber)))+
+  geom_bar(stat = 'identity', fill = 'dark cyan')+
+  ggtitle("Number of flights for each carrier")+ 
+  xlab("Unique Carrier") +
+  ylab("Number of flights") 
+# ggplot(abia_clean_new,aes(x=Origin, y=FlightNum))+
+#   geom_bar(stat = 'identity')+
+#   coord_flip()
+```
+
+We can see that the my carrier "WN" has one of the busiest flights having most number of them departing from Austin. By checking on google, it tells me these are South West Airlines. 
+
+
+#### Finding out the average delay time in departure from Austin Airport per carrier per phase of the day 
+```{r echo = FALSE}
+## Calculating average delay per shift 
+abia_clean_new_dep <- abia_clean_new[which(abia_clean_new$Origin == 'AUS'),]
+
+
+abia_clean_new_grouped <- abia_clean_new_dep%>%
+  group_by(dayphase,UniqueCarrier)%>%
+  summarize(avgdelay = median(DepDelay))
+
+neworder <- c('Early Morning','Morning','Afternoon','Evening','Night')
+
+plotdata <- transform(abia_clean_new_grouped,
+      dayphase=factor(dayphase,levels=c('Early Morning','Morning','Afternoon','Evening','Night')))
+
+## Maping it to average 
+ggplot(plotdata,aes(x=reorder(UniqueCarrier, -avgdelay), y=avgdelay ))+
+  geom_bar(stat = 'identity')+
+  facet_wrap(~ as.factor(dayphase), nrow = 5, scales = 'free')+aes(fill = as.factor(dayphase))+
+  scale_fill_brewer(palette="Dark2")+
+  ggtitle("median Delay Time of carriers by Day Phase")+
+  xlab("Carriers")+
+  ylab("Median Delay")
+
+```
+
+We can see that :
+#### Finding out the average delay time in departure from Austin Airport per carrier per phase of the day 
+```{r echo = FALSE}
+
+
+## Calculating average delay per shift 
+abia_clean_new_grouped <- abia_clean_new_dep%>%
+  group_by(DayOfWeek,dayphase,UniqueCarrier)%>%
+  summarize(avgdelay = median(DepDelay))
+# 
+# plotdata2 <- transform(abia_clean_new_grouped,
+#       DayOfWeek=factor(DayOfWeek, level = c('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday')))
+
+
+plotdata2 <- transform(abia_clean_new_grouped,
+      dayphase=factor(dayphase,levels=c('Early Morning','Morning','Afternoon','Evening','Night')))
+
+
+## Maping it to average 
+ggplot(plotdata2,aes(x=UniqueCarrier, y=avgdelay ))+
+  geom_bar(stat = 'identity')+
+  facet_grid(  DayOfWeek ~ dayphase , scales = 'free')+aes(fill = as.factor(DayOfWeek))+ 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  scale_fill_brewer(palette="Dark2")+
+  ggtitle("Median Departure Delay by each Carrier on Different Days of Week")+
+  xlab("Carriers")+
+  ylab("Median Departure Delay at different days of week")
+
+```
+
+In the plot above, the grid is telling me at each day of week, what is the average delay time of my carriers in different phases of the day. 
+We can see that generally, the nights have the major delays in departures at the Austin Airports .
+
+
+#### Filtering for arrivals to Austin Airport and running the analysis again
+```{r echo= FALSE}
+abia_clean_new_arr <- abia_clean_new[which(abia_clean_new$Dest == 'AUS'),]
+abia_clean_new_arr <- abia_clean_new_arr[which(is.na(abia_clean_new_arr$dayphasearr) == FALSE),]
+
+## Calculating average delay per shift 
+abia_clean_new_grouped <- abia_clean_new_arr%>%
+  group_by(DayOfWeek,dayphasearr,UniqueCarrier)%>%
+  summarize(avgdelay = median(ArrDelay))
+
+## Reordering the table for plot
+plotdata2 <- transform(abia_clean_new_grouped,
+      dayphasearr=factor(dayphasearr,levels=c('Early Morning','Morning','Afternoon','Evening','Night')))
+
+## Maping it to average 
+ggplot(plotdata2,aes(x=UniqueCarrier, y=avgdelay ))+
+  geom_bar(stat = 'identity')+
+  facet_grid(  DayOfWeek ~ dayphasearr , scales = 'free')+ 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +aes(fill = as.factor(DayOfWeek))+
+  scale_fill_brewer(palette="Dark2")+
+  ggtitle("Median Arrival Delay by each Carrier on Different Days of Week at Austin Airport")+
+  xlab("Carriers")+
+  ylab("Median Departure Delay at different days of week")
+
+```
+
+We can see from the plot above that generally flights coming at early morning tend to arrive late.
+
+## Plotting some extra graphs to see further general trends:
+
+```{r echo = FALSE}
+
+abia_clean_new_arrdest <- abia_clean_new
+abia_clean_new_arrdest$places <- paste(abia_clean_new_arrdest$Origin, "-", abia_clean_new_arrdest$Dest)
+abia_clean_new_arrdest$dummy <- 1
+abia_clean_new_arrdest$delay <- ifelse(abia_clean_new_arrdest$Origin == "AUS", abia_clean_new_arrdest$DepDelay, abia_clean_new_arrdest$ArrDelay)
+
+abia_clean_new_arrdest <- abia_clean_new_arrdest[which(abia_clean_new_arrdest$places != "AUS - DSM"),]
+abia_clean_new_arrdest <- abia_clean_new_arrdest[which(abia_clean_new_arrdest$places != "TYS - AUS"),]
+
+
+abia_clean_new_arrdest1 <- abia_clean_new_arrdest%>%
+  group_by( places ) %>%
+  summarize(numvalue = mean(delay))
+
+
+abia_clean_new_arrdest1$class <- "Mean Delay"
+
+
+abia_clean_new_arrdest2 <- abia_clean_new_arrdest%>%
+  group_by( places ) %>%
+  summarize(numvalue = length(TailNum))
+
+abia_clean_new_arrdest2$class <- "Number of Flights"
+
+
+abia_clean_new_arrdest <- rbind(abia_clean_new_arrdest1,abia_clean_new_arrdest2)
+
+
+#par(mfrow = c(1,2))
+ggplot(abia_clean_new_arrdest, aes(x= reorder(places, -numvalue), y= numvalue))+
+         geom_bar(stat = 'identity')+
+  facet_wrap(~class, nrow = 2, scales = 'free')+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  scale_fill_brewer(palette="Dark2")+
+  xlab("Carriers")+
+  ylab("")
+  #facet_wrap(~class)
+
+```
+
+
+We can see that the flights between IAD and AUS are the ones which fly on regular basis and are constantly delayed. Perhaps upon increasing the number of flights or changing the routes might solve the problem. 
+
+
+#### Plotting average delay and number of flights based on monthly basis:
+
+
+```{r echo = FALSE}
+
+
+## Calculating average delay per shift 
+abia_clean_new_grouped <- abia_clean_new_dep%>%
+  group_by(Month)%>%
+  summarize(flights = length(FlightNum))
+# 
+# plotdata2 <- transform(abia_clean_new_grouped,
+#       DayOfWeek=factor(DayOfWeek, level = c('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday')))
+
+
+
+## Maping it to average 
+ggplot(abia_clean_new_grouped,aes(x=Month, y=flights ))+
+  geom_bar(stat = 'identity')
+
+```
+
+
+## Conclusion :
+
+- The "South West Airlines" has majority of carriers operating at the Austin Airport.
+
+- Generally, at any given day of the week, the departures at the Early Morning (till 6am) are the busiest for Arrivals, and at Evenings, its the departures which are delayed the most. So if you are travelling from Austin, avoid booking an evening flight and if you are travelling to Austin, try to avoid a flight which arrives early morning.
+
+- Generally, the airline service between Dulles, Washington (IAD) and Austin is generally delayed. Probably increasing the number of aircrafts might change the scenario.
+
+############################################################################################################################
+
+# ** Question 3: Portfolio modeling: **
+
+```{r, include=FALSE}
+library(mosaic)
+library(foreach)
+library(quantmod)
+```
+
+First let us import few stocks. We will choose stocks such that few are volatile and few are stable. Also we chose stocks which have more than 5 years of data.
+
+1. Find stocks to put in your EFT
+2. Plot the trends for the past 5 years to see which ones are volatile and which ones are stable
+3. Decide the weightes for all 3 portfolios
+4. Create a function to calculate the VAR at the end of 4 weeks
+Function: 
+1. Build a loop to resample the returns day by day and add a rebalancing at the end of the loop
+2. Build another loop to perform monte carlo simulations
+
+Stocks were selected from the top 100 most heavily traded exchange products.
+```{r echo=TRUE}
+mystocks = c("EEM", "QQQ", "SPY", "EFA", "XOP")
+getSymbols(mystocks)
+```
+
+To adjust for splits and divedends, we use the adjustOLHC package which is part of the quantmod() library.
+
+```{r}
+adjusted_stocks = lapply(mystocks, function(i) {
+  adjustOHLC(get(i, pos=.GlobalEnv), symbol.name=i, adjust=c("split"), 
+             use.Adjusted=FALSE)
+})
+
+all_returns = cbind(ClCl(EEM),ClCl(QQQ),ClCl(SPY),ClCl(EFA),ClCl(XOP))
+#head(all_returns)
+all_returns = as.matrix(na.omit(all_returns))
+summary(all_returns)
+```
+
+```{r echo=TRUE}
+#par(mfrow = c(3, 2))
+colours = c('dark red', 'dark cyan','blue','dark green','orange')
+for (i in seq_along(mystocks)) {
+  df_expr = paste(mystocks[i],"$",mystocks[i],".Close", sep = "")
+  data = eval(parse(text = df_expr))
+  plot = plot(data, col = colours[i], type = "l", main = paste(mystocks[i],"Closing Prices"))
+  print(plot)
+}
+```
+
+
+Let us look at the standard deviation to judge the volatility
+```{r echo=TRUE}
+stdev_stocks = data.frame()
+for (i in 1:ncol(all_returns))
+{
+ s = sd(all_returns[, i], na.rm = T)
+ stdev_stocks[1,i] =  s
+}
+colnames(stdev_stocks) = colnames(all_returns)
+stdev_stocks
+```
+
+Looks like **EEM** and **XOP** are the most volatile stocks.
+
+Now to build the function to calculate the variance:
+```{r echo=TRUE}
+days = 20
+initial_wealth = 10000
+func_wealthtracker = function(weights){
+  wealthtracker = matrix(0, nrow = 5000, ncol = days)
+  for (i in 1:5000) {
+  wealth = initial_wealth
+    for (day in 1:20) {
+      wealth = initial_wealth
+      splits = weights*wealth
+      sample.day = resample(all_returns, 1, orig.ids = FALSE)
+      return = splits+splits*sample.day
+      wealth = sum(return)
+      wealthtracker[i,day] <- wealth
+    }}
+  wealthtracker
+}
+```
+
+```{r echo=TRUE}
+#plot the histogram for the first portfolio
+weights1 = c(0.2, 0.2, 0.2, 0.2, 0.2)
+data1 = func_wealthtracker(weights1)
+ggplot(mapping = aes(data1[,days]-initial_wealth)) +
+  geom_histogram(bins = 30, fill = 'black') +
+  labs(x = "Profit",
+       y = "Frequency",
+       title = "VAR - Strategy 1",
+       subtitle = "")
+quantile(data1[,days] - initial_wealth, 0.05)
+```
+
+Thus, from a portfolio where the weights are evenly distributed, we get a VAR of `r quantile(data1[,days] - initial_wealth, 0.05)`. Additionally, we get an average profit of `r round(mean(data1[,days]),0)`.
+
+Now let us see a safer portfolio, where we put  lesser weight on the 2 volatile stocks
+```{r echo=TRUE}
+weights2 = c(0.05, 0.3, 0.3, 0.3, 0.05)
+data2 = func_wealthtracker(weights2)
+ggplot(mapping = aes(data2[,days]-initial_wealth)) +
+  geom_histogram(bins = 30, fill = 'black') +
+  labs(x = "Profit",
+       y = "Frequency",
+       title = "VAR - Strategy 2",
+       subtitle = "")
+quantile(data2[,days] - initial_wealth, 0.05)
+```
+
+Thus, from a safer portfolio, we get a VAR of **`r quantile(data2[,days] - initial_wealth, 0.05)`**. Additionally, we get an average profit of **`r round(mean(data2[,days]),0)`**.
+
+Next, we will make a more risky portfolio, adding weight on the more volatile stocks
+```{r echo=TRUE}
+weights3 = c(0.25, 0.2, 0.2, 0.1, 0.25)
+data3 = func_wealthtracker(weights2)
+ggplot(mapping = aes(data3[,days]-initial_wealth)) +
+  geom_histogram(bins = 30, fill = 'black') +
+  labs(x = "Profit",
+       y = "Frequency",
+       title = "VAR - Strategy 3",
+       subtitle = "")
+quantile(data3[,days] - initial_wealth, 0.05)
+```
+
+Thus, from a safer portfolio, we get a VAR of **`r quantile(data3[,days] - initial_wealth, 0.05)`**. Additionally, we get an average profit of **`r round(mean(data3[,days]),0)`**.
+
+###########################################################################################################################
+
+# ** Question 4: Market Segmentation:**
+## PROBLEM UNDERSTANDING: 
+We are supposed to analyze our data and cluster it based on the customers online activity so that our client can approach the market in a more segmented fashion 
+#### Loading libraries
+```{r echo=FALSE, include= FALSE}
+library(mvtnorm)
+library(ggplot2)
+#library(kmeans)q
+library(LICORS)  # for kmeans++
+library(foreach)
+library(mosaic)
+library(dplyr)
+#setwd("C:/Users/raisi/Downloads/Summer 2019/Predictive Modelling J Scott/STA380-master/data")
+
+```
+## EDA on DATA:
+#### Plotting summaries and checking for null values in each of the columns
+```{r echo = FALSE}
+## Reading the file and checking its characterstics : 
+ms <- read.csv("social_marketing.csv")
+#Checking for na values 
+msna<- ms[which(is.na(ms)==TRUE),]
+msna
+check1 = nrow(ms)
+check2 = length(unique(ms$X))
+if( check1 == check2){
+  print("unique ids")
+}
+## Checking for na values again 
+for(i in 2:nrow(ms)){
+  for(j in 1:ncol(ms)){
+    if(is.na(ms[i,j]) == TRUE){
+      print("Yes")
+    }
+  }
+}
+print(summary(ms))
+```
+There are no null values 
+There are no duplicate ids 
+Based on the summary above, it looks like the range, median and mean of the columns in my data are more or less the same, except for spam, dating and adult
+#### Plotting frequency distribution across categories
+```{r echo = FALSE}
+brex = data.frame()
+for (i in 2:ncol(ms)){
+  brex[(i-1),1] = names(ms[i])
+  brex[(i-1),2] = sum(ms[,i])
+}
+#brex[[1]] <- NULL
+#ggplot(data )
+colnames(brex) <- c('Column_Name','value')
+ggplot(brex, mapping = aes(x=Column_Name,y=value))+
+  geom_bar(stat = 'identity')+
+  theme(axis.text.x = element_text(angle=90, vjust=0.6))
+```
+#### Plotting some scatter plots to see if there are any good amount of outliers present in my data which can effect the clustering 
+```{r echo = FALSE}
+i = 0
+par(mfrow=c(3,3))
+for( i in 2:ncol(ms)){
+  #plot(ms[,i], xlab = colnames(ms[i]), ylab = colnames(ms[i]))
+  hist(ms[,i], xlab = colnames(ms[i]), main = "")
+}
+#ms$id <-   NULL
+```
+Based on the plots and summary above, we can see that the range of my columns are more or less the same, also there are no such bunch of outliers present which can hamper my clustering, so it would not be a waste of time to run clustering on unscaled data as well
+We can also try iterations with removing spam and adult variables 
+## PROCEDURE: 
+Post EDA, following models were tried : 
+ - Kmeans 
+ - Heirarchical Clustering 
+ - Kmeans++
+ - RUnning the above three on PCA components
+ 
+Each of the above Iteration were tried on SCALED DATA, UNSCALED DATA and NORMALIZED DATA (Reason written in EDA section)
+ 
+For every iteration, the optimum number of clusters were determined (K) by guessing a range from "Elbow Curve" plots, "CH Index" plots and GAP Statistics. 
+After running through each value of K, the properties of cllusters were determined by ploting boxplots of every variable across each cluster. Suppose the median,upper range and lower range of a particular cluster for a particular variable was coming out to be significantly high or low, we used to assign a property based on the variable to that cluster. For example, after running an iteration of Kmeans with K = 5, and plotting box plots of all the 5 clusters across a variable "travel", my second cluster's box plot had higher values, we would say people in cluster 2 generally tend to comment more on travel related categories
+After running these methods, certain scatter plots were drawn to see how distinctly we are able to identify the clusters
+Based on the distribution of data across clusters, business use case and extent of distinction, few of the following models are chosen.
+## K means on scaled data with K = 7
+#### For the scaled data running K-means 
+#### Plotting an elbow curve  
+```{r echo = FALSE,warning=FALSE}
+# checking for K values from 1 to 20 
+ms1 = scale(ms[,2:ncol(ms)])
+sd = list()
+set.seed(1234)
+for(i in 1:20){
+  
+  clusterk = kmeans(ms1,i, nstart = 1) # nstart = number of times you want to run the kmean : will run the kmean k=n times and give you the result based on minimum total withiness 
+  sd[i] = clusterk$tot.withinss
+  #print(i)
+}
+plot(seq(1:20),sd)
+```
+#### Plotting with CH Index
+```{r echo=FALSE, warning=FALSE}
+# checking for K values from 1 to 20 
+set.seed(1234)
+ms1 = scale(ms[,2:ncol(ms)])
+sd = list()
+n = nrow(ms1)
+for(i in 1:20){
+  
+  clusterk = kmeans(ms1,i, nstart = 1)
+  sd[i] = (clusterk$betweenss/clusterk$tot.withinss)*((n-i)/(i-1))
+  #print(i)
+}
+plot(seq(1:20),sd)
+```
+#### Plotting GAP Statistics
+```{r echo = FALSE, warning=FALSE}
+set.seed(1234)
+library(cluster)
+ms_gap = clusGap(ms1, FUN = kmeans, nstart = 5, K.max = 15, B = 10)
+plot(ms_gap)
+```
+
+#### Trying different iterations and running K means with 7
+
+```{r echo = FALSE, warning=FALSE}
+set.seed(1234)
+clust1 = kmeans(ms1, 7, nstart=25)
+#plot(clust1$tot.withinss)
+msc <- cbind(ms,clust1$cluster)
+#View(msc)
+msc$clust <- msc$`clust1$cluster`
+msc$`clust1$cluster` <- NULL
+msc$clustF <- as.factor(msc$clust)
+msc$id <- row.names(ms)
+## The following code is used for plotting bar plot of clusters 
+msctest <- msc
+msctest$dummy <- 1
+mscclst = msctest %>% 
+  group_by(clustF) %>%
+  summarise(den.sum = sum(dummy))
+ggplot(mscclst, mapping = aes(x=clustF,y=den.sum))+
+  geom_bar(stat = 'identity')+
+  xlab("Cluster Number") +
+  ylab("Frequency")
+  #theme(axis.text.x = element_text(angle=90, vjust=0.6))
+```
+#### Plotting box plots
+```{r echo = FALSE, warning=FALSE}
+par(mfrow=c(2,3))
+#boxplot( msc$clustF,msc$food)
+for ( i in 2:37){
+plot(msc$clustF, msc[,i], ylab = names(msc[i]))
+}
+```
+Based on the plots above we can bucket aur audience into following audience: 
+Class 1(Trendy class) : These people generally talk about fashion, beauty, pic sharing and cooking generally.
+Class 2(Technical and knowledge sharing) : Automative, computers, news, politics and travel are topics generally discussed 
+Class 3(Health Conscious) : Personal Fitting, outdoor, health_nutrition and food (might be discussing about healthy food and suppliments)
+Class 4(Family persons): School, parenting, religion, family, food and sports fandom
+Class 5(Instagram People): Shopping, TV Films, shopping, pic sharing and chatter
+Class 7(College people) : Arts, sports_playing, college_uni and online gaming 
+```{r echo= FALSE, warning=FALSE}
+# for( i in 2:8){
+#   l = i+1
+#   for( j in l:10){
+# 
+# print(qplot(msc[,i], msc[,j], data=msc, color=msc$clustF, xlab = names(msc[i]), ylab = names(msc[j])))
+#   }
+# }
+mscplot <- msc
+mscplot$id <- msc$X #row.names(mscplot)
+par(mfrow =c(2,3))
+#qplot( row.names(mscplot),  mscplot$personal_fitness,colour =msc$clustF)
+print(qplot((msc[,33]), (msc[,17]), data=msc, color=msc$clustF, xlab = names(msc[33]), ylab = names(msc[17])))
+print(qplot(msc[,34], msc[,29], data=msc, color=msc$clustF, xlab = names(msc[34]), ylab = names(msc[29])))
+print(qplot(msc[,15], msc[,18], data=msc, color=msc$clustF, xlab = names(msc[15]), ylab = names(msc[18])))
+print(qplot(msc[,30], msc[,28], data=msc, color=msc$clustF, xlab = names(msc[30]), ylab = names(msc[28])))
+```
+In first plot we can see how our class 3 ( health conscious) tend to post most about health nutirition and personal fitness
+Second plot shows majority of our class 1 population talking about beauty 
+Third plot shows our college people talking about college_uni and online gaming
+Forth plot shows our "Family Person" class 4 talking majorly about religion and parenting
+## Kmeans++ on unscaled data with K = 12
+#### Have removed columns adult and spam
+```{r echo=FALSE, warning=FALSE}
+
+# checking for K values from 1 to 20 
+ms2 = (ms[,2:ncol(ms)])
+ms2$adult <- NULL
+ms2$spam <- NULL
+sd = list()
+
+#ms2 <- (ms4)
+set.seed(1234)
+for(i in 1:20){
+  
+  clusterk = kmeanspp(ms2,i, nstart = 1) # nstart = number of times you want to run the kmean : will run the kmean k=n times and give you the result based on minimum total withiness 
+  sd[i] = clusterk$tot.withinss
+  #print(i)
+}
+plot(seq(1:20),sd)
+```
+#### Plotting with CH Index
+```{r echo= FALSE, warning=FALSE}
+# checking for K values from 1 to 20 
+set.seed(1234)
+#ms2 = (ms[,2:ncol(ms)])
+sd = list()
+n = nrow(ms2)
+set.seed(1234)
+for(i in 1:20){
+  
+  clusterk = kmeanspp(ms2,i, nstart = 1)
+  sd[i] = (clusterk$betweenss/clusterk$tot.withinss)*((n-i)/(i-1))
+  #print(i)
+}
+plot(seq(1:20),sd)
+```
+## Plotting using Gap Statistics 
+```{r echo=FALSE, warning=FALSE}
+library(cluster)
+set.seed(1234)
+ms_gap = clusGap(ms2, FUN = kmeanspp, nstart = 5, K.max = 15, B = 10)
+plot(ms_gap)
+```
+#### Kmeanspp for K = 12
+```{r echo = FALSE, warning=FALSE}
+set.seed(1234)
+mspp <- ms2
+mspp$adult <- NULL
+mspp$spam <- NULL
+mspp$uncategorized <- NULL
+mspp <- scale(mspp[2:ncol(mspp)])
+mspc <- data.frame(mspp)
+clust1 = kmeanspp(mspp, 12 , nstart=25)
+#plot(clust1$tot.withinss)
+msc <- cbind(ms,clust1$cluster)
+#View(msc)
+msc$clust <- msc$`clust1$cluster`
+msc$`clust1$cluster` <- NULL
+msc$clustF <- as.factor(msc$clust)
+msc$id <- row.names(ms)
+#for ( i in 2:10){
+  
+## The following code is used for plotting bar plot of clusters 
+msctest <- msc
+msctest$dummy <- 1
+mscclst = msctest %>% 
+  group_by(clustF) %>%
+  summarise(den.sum = sum(dummy))
+ggplot(mscclst, mapping = aes(x=clustF,y=den.sum))+
+  geom_bar(stat = 'identity')
+  #theme(axis.text.x = element_text(angle=90, vjust=0.6))
+```
+#### Plotting box plots
+```{r echo = FALSE}
+#boxplot( msc$clustF,msc$food)
+for ( i in 2:37){
+plot(msc$clustF, msc[,i], ylab = names(msc[i]))
+}
+```
+Based on the model above we can segment our audience into following categories: 
+- Class 1 ( College people) : They usually talk about playing sports, online gaming and college uni 
+- Class 2 (Shopping enthu) : They are high in topics realted to shopping, pic sharing and chatter
+- Class 3 (Artistic) : Art and tv_films are generally topics of discussion 
+- Class 4( Health Freaks) : personal_fitness, outdoors, health_nutrition
+- Class 5( Tech and news) : Computers, news ,politics and travel are majority topics
+- Class 6( Family people) : Parenting, Family and religion
+- Class 7 : Fashion, Beauty, Cooking and Photo Sharing
+- Class 9( Teenage) : Topics of discussion are school, dating and chatter 
+- Class 10 (Family People): School, Parenting, Family, Religion, food, sports_fandon
+- Class 12 (News) : Automotive, news and politics 
+#### Drawing some scatter plots
+```{r echo= FALSE, warning=FALSE}
+
+mscplot <- msc
+mscplot$id <- msc$X #row.names(mscplot)
+par(mfrow =c(2,3))
+#qplot( row.names(mscplot),  mscplot$personal_fitness,colour =msc$clustF)
+print(qplot((msc[,33]), (msc[,17]), data=msc, color=msc$clustF, xlab = names(msc[33]), ylab = names(msc[17])))
+print(qplot(msc[,34], msc[,29], data=msc, color=msc$clustF, xlab = names(msc[34]), ylab = names(msc[29])))
+print(qplot(msc[,15], msc[,18], data=msc, color=msc$clustF, xlab = names(msc[15]), ylab = names(msc[18])))
+print(qplot(msc[,11], msc[,28], data=msc, color=msc$clustF, xlab = names(msc[11]), ylab = names(msc[28])))
+print(qplot(msc[,30], msc[,28], data=msc, color=msc$clustF, xlab = names(msc[30]), ylab = names(msc[28])))
+```
+In the first plot we can see our Class 3 being dominant as they are health freak people 
+In the second plot we can see people from Class 7 talking about beauty and fashion 
+In the third plot we see our students pots
+In fourth plot and fifth plot we can see lot of class 8 and 6 people but class 8 is dominant
+##CONCLUSION: 
+ After iterating over several techniques and parameters, above two gave the best resuts. However, the problem in both cases is that we are unable to classify properly the class which has major chunk of data in it. 
+ 
+ We evaluated clusters based on the box plots and scatter plots. 
+ 
+ In 1st method, the mojrity chunk in which we were unable to cluster them properly consisted of 3500 records , but for the ones we did, we could show for attributes attached to those classes, majority of the data points in their scatter plot belonged to them. 
+ 
+ In 2nd method, we were unable to give good properties to cluster 8. For cluster 6, some properties were getting tied up to it but i scatter plots we saw that those properties were getting overshadowed due to other classes, so we can say the model did not clustered by class 6 properly. Thus there are total 4500 which do not have any specific property.
+Thus we will go with 1st model and classify our audience accordingly.
+
+############################################################################################################################
+
+# ** Question 5: Author Attribution:**
+
+
+Installing all libaries needed for analysis:
+```{r,echo=FALSE,include=FALSE}
+library(tm) 
+library(magrittr)
+library(slam) # to save matrices in sparce format
+library(proxy)
+library(dplyr)
+library(tidyverse)
+```
+
+Defining readerPlain function to read plain text documents in English:
+```{r}
+readerPlain = function(fname){
+  readPlain(elem=list(content=readLines(fname)), 
+            id=fname, language='en') }
+# Train data
+# Read in all the files
+file_list = Sys.glob('C:/Users/raisi/Downloads/Summer 2019/Predictive Modelling J Scott/STA380-master/data/ReutersC50/C50train/*/*.txt')
+
+Reuters_Files = lapply(file_list, readerPlain) 
+
+file_list_test = Sys.glob('C:/Users/raisi/Downloads/Summer 2019/Predictive Modelling J Scott/STA380-master/data/ReutersC50/C50test/*/*.txt')
+Reuters_Files_test = lapply(file_list_test, readerPlain) 
+
+```
+
+Cleaning the file names:
+```{r}
+mynames = file_list %>%
+  { strsplit(., '/', fixed=TRUE) } %>%
+  { lapply(., tail, n=2) } %>%
+  { lapply(., paste0, collapse = '') } %>%
+  unlist
+
+mynames_test = file_list_test %>%
+  { strsplit(., '/', fixed=TRUE) } %>%
+  { lapply(., tail, n=2) } %>%
+  { lapply(., paste0, collapse = '') } %>%
+  unlist
+```
+
+
+
+```{r}
+
+author_train = file_list %>%
+  {strsplit(., '/', fixed=TRUE)}%>%
+  { lapply(., function(x)x[11]) }%>% #you might have to change x[5] depending on which directory your  file is in
+  { lapply(., paste0, collapse = '') } %>%
+  unlist
+author_test = file_list_test %>%
+  {strsplit(., '/', fixed=TRUE)}%>%
+  { lapply(., function(x)x[11]) }%>%
+  { lapply(., paste0, collapse = '') } %>%
+  unlist
+```
+
+We now need to create a corpus:
+```{r}
+documents_raw = Corpus(VectorSource(Reuters_Files))
+documents_raw_test = Corpus(VectorSource(Reuters_Files_test))
+```
+
+```{r, echo=FALSE}
+# Preprocessing steps
+my_documents = documents_raw
+my_documents = tm_map(my_documents, content_transformer(tolower)) # make everything lowercase
+my_documents = tm_map(my_documents, content_transformer(removeNumbers)) # remove numbers
+my_documents = tm_map(my_documents, content_transformer(removePunctuation)) # remove punctuation
+my_documents = tm_map(my_documents, content_transformer(stripWhitespace)) ## remove excess white-space
+my_documents = tm_map(my_documents, content_transformer(removeWords), stopwords("en"))
+
+my_documents_test = documents_raw_test
+my_documents_test = tm_map(my_documents_test, content_transformer(tolower)) # make everything lowercase
+my_documents_test = tm_map(my_documents_test, content_transformer(removeNumbers)) # remove numbers
+my_documents_test = tm_map(my_documents_test, content_transformer(removePunctuation)) # remove punctuation
+my_documents_test = tm_map(my_documents_test, content_transformer(stripWhitespace)) ## remove excess white-space
+my_documents_test = tm_map(my_documents_test, content_transformer(removeWords), stopwords("en"))
+```
+
+```{r, echo=FALSE}
+# Create a document term matrix
+DTM_Reuters = DocumentTermMatrix(my_documents)
+DTM_Reuters_test = DocumentTermMatrix(my_documents_test)
+DTM_Reuters_test = DocumentTermMatrix(my_documents_test,
+                                      control = list(dictionary=Terms(DTM_Reuters)))
+```
+
+Removing terms that have count 0 in >95% of docs. Terms that occur this rarely are unlikely to reveal attributes unique to an author:
+```{r}
+DTM_Reuters = removeSparseTerms(DTM_Reuters, 0.95)
+DTM_Reuters
+
+DTM_Reuters_test = removeSparseTerms(DTM_Reuters_test, 0.95)
+DTM_Reuters_test
+```
+
+Next steps done were:
+
+construct TF IDF weights.
+
+Running PCA to reduce number of features.
+
+We considered 700 as the optimum PCA importance.
+
+
+```{r}
+tfidf_Reuters = weightTfIdf(DTM_Reuters)
+X = as.matrix(tfidf_Reuters)
+X = X[,-which(colSums(X)==0)]
+
+tfidf_Reuters_test = weightTfIdf(DTM_Reuters_test)
+X_test = as.matrix(tfidf_Reuters_test)
+X_test = X_test[,-which(colSums(X_test)==0)]
+
+y = author_train
+
+X_test = X_test[,intersect(colnames(X_test),colnames(X))]
+X = X[,intersect(colnames(X_test),colnames(X))]
+
+pca_train = prcomp(X, scale=TRUE)
+pve = summary(pca_train)$importance[3,]
+plot(pve)
+
+#pca_test = prcomp(X_test, scale=TRUE)
+loading_train = pca_train$rotation[,1:700]
+pca_test = scale(X_test) %*% loading_train
+
+
+X_train = pca_train$x[,1:700]
+train = as.data.frame(X_train)
+train['y'] = y
+
+test = as.data.frame(pca_test)
+test['y'] = author_test
+```
+
+
+Trying KNN model:
+```{r eval=FALSE, include=FALSE}
+library(kknn)
+
+k = c(5,6,7,8,9,10)
+
+accuracies = c()
+for(i in k)
+  {
+  near = kknn(as.factor(y)~.,train,test,k=i,distance = 1,kernel = "rectangular")
+  accuracies = c(accuracies,sum(near$fitted.values == test$y)/nrow(test))
+}
+
+```
+
+Best accuracy is **57%** for KNN with k=5.
+
+Random Forest:
+```{r eval=FALSE, include=FALSE}
+
+library(randomForest)
+rf_model = randomForest(as.factor(y) ~ .,
+                         data = train,
+                         ntree = 1000,mtry = 50,importance=FALSE)
+
+rf_predict = predict(rf_model, test)
+correct = ifelse(rf_predict==test$y, 1, 0)
+rf_accuracy = sum(correct==1)*100/length(correct)
+```
+
+Best accuracy is **42%** for 100 trees.
+
+Naive Bayes:
+```{r eval=FALSE, include=FALSE}
+library(e1071)
+NBclassfier=naiveBayes(as.factor(y)~., data=train)
+
+nb_predict <-  predict(NBclassfier, as.data.frame(test), type = 'class')
+
+correct = ifelse(nb_predict==test$y, 1, 0)
+rf_accuracy = sum(correct==1)*100/length(correct)
+```
+
+Best accuracy with Naive Bayes is **28%**.
+
+```{r eval=FALSE, include=FALSE}
+library(gbm)
+boost = gbm(as.factor(y)~.,data=train, n.trees=1000, shrinkage=0.3, distribution = "multinomial")
+boost_predict=predict(boost,newdata=test, n.trees=1000)
+boost_predict = colnames(boost_predict)[apply(boost_predict, 1, which.max)]
+correct = ifelse(boost_predict==test$y, 1, 0)
+boost_accuracy = sum(correct==1)*100/length(correct)
+```
+
+Let's try **LDA**:
+```{r eval=FALSE, include=FALSE}
+library(MASS)
+lda.model = lda(as.factor(y)~., data=train)
+lda_predict=predict(lda.model,test[,-701])
+correct = ifelse(lda_predict$class==test$y, 1, 0)
+lda_accuracy = sum(correct==1)*100/length(correct)
+```
+
+Best accuracy is **58%**.
+
+## Conclusion: 
+
+Text is an unstructured data format and therefore requires several pre-processing steps to turn it into a more structured form. 
+
+After pre-processing, we extracted TF-IDF values from all documents to find characteristics unique to an author. 
+
+We removed terms that were sparingly used because this long-tail of words added unnecessary complexity to the analysis, without a proportional improvement in classification accuracy. 
+
+Using PCA, we reduced the number of features in order to make the problem computationally less expensive. 
+
+We used models such as KNN, Random Forest, LDA etc to classify articles to their authors.
+
+We noticed that the best accuracy was obtained using an LDA model, which gave us 58% accuracy.
+
+############################################################################################################################
+
+# ** Question 6: Association Rule Mining: **
+
+The .txt file has data of **9,835** rows with each row being a list of items seperated by commas and each row being a new basket.
+
+```{r,echo=FALSE,include=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(arules)
+library(arulesViz)
+
+groceries = read.table("groceries.txt",sep="\n",header=FALSE,stringsAsFactors = FALSE)
+
+```
+
+Displaying a sample basket to check the contents and verify if they have been extracted correctly
+```{r}
+groceries[1,]   
+```
+
+Currently our data is just comma separated items with each row of our data being one transaction. 
+To use the transaction conversion function we need indivudal baskets as a vector with the items from every transaction.
+```{r,include=FALSE}
+item_list = list()
+```
+
+Splitting items single strings from every basket into individual strings of items and then displaying one row to verify. 
+```{r}
+item_list = apply(groceries, MARGIN = 1, FUN = function(x){unlist(strsplit(x, ","))})
+item_list[1]
+```
+This is then converted to a vector by **unlisting**.
+```{r,echo= FALSE}
+item_vector = unlist(item_list)
+```
+# How many items are present in our dataset?
+```{r}
+length(unique(item_vector))  
+```
+
+There are **169** unique items in our dataset.
+
+```{r,echo=FALSE}
+item_count = as.data.frame(table(item_vector))
+```
+
+# What is the most popular item?
+```{r}
+ggplot(item_count %>% 
+        arrange(-Freq) %>% 
+        head(20), 
+        aes(x = reorder(item_vector, -Freq), y = Freq)) + 
+  geom_bar(stat = "identity") + 
+  coord_flip() 
+```
+
+The top 3 most commonly purchased items are **Whole Milk**,**Vegetables** and **Rolls/Buns** in the same order.
+
+# What are the 10 least popular items?
+```{r}
+item_count %>%
+  arrange(Freq) %>%
+  head(10)
+```
+
+We then convert our items into transactions using the "as" function with "transactions" as the second argument.
+```{r,echo=FALSE}
+item_list = lapply(item_list, unique)
+
+item_transactions = as(item_list, "transactions")
+```
+
+# Applying the Apriori algorithm to identify the most popular associations:
+```{r,echo=FALSE,include=FALSE}
+groceryrules = apriori(item_transactions,parameter=list(support = .001,confidence = .6))
+summary(groceryrules)
+
+inspect(head(groceryrules, n = 10, by ="lift"))
+```
+
+The popular associations can be visualised as below:
+```{r}
+plot(head(groceryrules, n = 10, by ="lift"), method = "graph", main = "Popular association rules")
+```
+
+# Conclusions: 
+A few of the most common purchases or inferences are:
+
+1. People purchasing **Instant food products** and **soda** are more likely to get **hamburger meat** too.
+
+2. **Cheese, ham, white bread** and **eggs** usually sell together.
+
+3. **Popcorn, soda** are sold popularly with **salty snacks** (possible movie/game night meals).
+
+4. A lot of dairy like **cheese, curd, whipped cream and yogurt** are purchased together.
+
+############################################################################################################################
